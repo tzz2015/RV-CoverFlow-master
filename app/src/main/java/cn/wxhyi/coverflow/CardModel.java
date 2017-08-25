@@ -5,7 +5,7 @@ import java.io.Serializable;
 /**
  * Created by yichao on 16/2/26.
  */
-public class CardModel implements Serializable {
+public class CardModel extends BaseRecyclerModel implements Serializable {
 
     private String title;
     private String img = "0";

@@ -18,22 +18,19 @@ import java.util.LinkedList;
 /**
  * Created by yichao on 16/2/25.
  */
-public class CoverFlowAdapter extends RecyclerView.Adapter<CoverFlowAdapter.ViewHolder> {
+public class CoverFlowAdapter extends BaseCoverFlowAdapter<CoverFlowAdapter.ViewHolder> {
 
     private static String TAG = "CoverFlowAdapter";
 
-    private int total = 0;
-    private int factor = 100;
 
-    private LinkedList<CardModel> cardModels;
-    private int border_position = 0;
 
     private ImageLoader loader;
     private DisplayImageOptions displayImageOptions;
 
     public CoverFlowAdapter(LinkedList<CardModel> cardModels, Context context){
-        this.cardModels = cardModels;
-        this.total = cardModels.size() * factor;
+        data.clear();
+        data.addAll(cardModels);
+        total = data.size() * factor;
         loader = ImageLoader.getInstance();
         loader.init(ImageLoaderConfiguration.createDefault(context));
         displayImageOptions = new DisplayImageOptions.Builder()
@@ -47,23 +44,21 @@ public class CoverFlowAdapter extends RecyclerView.Adapter<CoverFlowAdapter.View
         return new ViewHolder(view);
     }
 
+
     @Override
     public void onBindViewHolder(ViewHolder holder, int position) {
-        position = position % cardModels.size();
+        position = position % data.size();
         holder.card_layout.setVisibility(View.VISIBLE);
-        showPic(holder.card_image, "drawable://" + cardModels.get(position).getImg());
-        if (!cardModels.get(position).isBorder){
-            holder.card_title.setText(cardModels.get(position).getTitle());
+        CardModel cardModel= (CardModel) data.get(position);
+        showPic(holder.card_image, "drawable://" + cardModel.getImg());
+        if (!cardModel.isBorder){
+            holder.card_title.setText(cardModel.getTitle());
         }
         if (position < border_position || position > getItemCount() - border_position - 1){
             holder.card_layout.setVisibility(View.GONE);
         }
     }
 
-    @Override
-    public int getItemCount() {
-        return total;
-    }
 
     class ViewHolder extends RecyclerView.ViewHolder {
 
@@ -79,14 +74,11 @@ public class CoverFlowAdapter extends RecyclerView.Adapter<CoverFlowAdapter.View
         }
     }
 
-    public void setBorder_position(int border_position) {
-        this.border_position = border_position;
-        for (int i  = 0; i < border_position; i++){
-            cardModels.addFirst(new CardModel(true));
-            cardModels.addLast(new CardModel(true));
-            total = total + 2;
-        }
-        notifyDataSetChanged();
+
+    @Override
+    protected void addModel() {
+        data.addFirst(new CardModel(true));
+        data.addLast(new CardModel(true));
     }
 
     private void showPic(ImageView imgView, String url) {
@@ -99,15 +91,5 @@ public class CoverFlowAdapter extends RecyclerView.Adapter<CoverFlowAdapter.View
         }
     }
 
-    public void setFactor(int factor) {
-        this.factor = factor;
-        this.total = cardModels.size() * factor;
-    }
 
-    public int getOriginDataSize() {
-        if (cardModels == null) {
-            return 0;
-        }
-        return cardModels.size();
-    }
 }

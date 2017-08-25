@@ -120,9 +120,9 @@ public class CoverFlowView extends RecyclerView {
         final float distanceX = parentCenterX - absChildCenterX;
 
         if (orientation == HORIZONTAL) {
-            prepareMatrix(mMatrix, (int)distanceX,(int)(getWidth() / 1.5f));
+            prepareMatrix(mMatrix, (int)distanceX,(int)(getWidth() / SCALE));
         } else {
-            prepareMatrix(mMatrix, (int)distanceY, (int)(getHeight() / 2f));
+            prepareMatrix(mMatrix, (int)distanceY, (int)(getHeight() / SCALE));
         }
 
         mMatrix.preTranslate(-childCenterX, -childCenterY);
@@ -169,9 +169,9 @@ public class CoverFlowView extends RecyclerView {
     protected int getChildDrawingOrder(int childCount, int i) {
         int centerChild = childCount / 2;
         if (!flag && !scrollInfinity) {
-            ((CoverFlowAdapter) getAdapter()).setBorder_position(centerChild);
+            ((BaseCoverFlowAdapter) getAdapter()).setBorder_position(centerChild);
             left_border_position = centerChild;
-            right_border_position = ((CoverFlowAdapter) getAdapter()).getItemCount() - centerChild - 1;
+            right_border_position = ((BaseCoverFlowAdapter) getAdapter()).getItemCount() - centerChild - 1;
             Log.i(TAG, "left_border_position:" + left_border_position);
             Log.i(TAG, "right_border_position" + right_border_position);
             flag = true;
@@ -311,9 +311,9 @@ public class CoverFlowView extends RecyclerView {
     @Override
     public void setAdapter(Adapter adapter) {
         if (!scrollInfinity) {
-            ((CoverFlowAdapter) adapter).setFactor(1);
+            ((BaseCoverFlowAdapter) adapter).setFactor(1);
         }
-        adapterDataSize = ((CoverFlowAdapter) adapter).getOriginDataSize();
+        adapterDataSize = ((BaseCoverFlowAdapter) adapter).getOriginDataSize();
         if (adapterDataSize == 0) {
             Log.e(TAG, "adapter size is null!");
             return;
