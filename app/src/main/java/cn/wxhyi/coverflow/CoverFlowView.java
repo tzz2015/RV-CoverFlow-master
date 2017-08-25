@@ -1,0 +1,343 @@
+package cn.wxhyi.coverflow;
+
+import android.content.Context;
+import android.content.res.TypedArray;
+import android.graphics.Bitmap;
+import android.graphics.Camera;
+import android.graphics.Canvas;
+import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.Point;
+import android.graphics.Rect;
+import android.os.Handler;
+import android.os.Looper;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.util.AttributeSet;
+import android.util.Log;
+import android.view.Display;
+import android.view.View;
+
+/**
+ * Created by yichao on 16/2/25.
+ */
+public class CoverFlowView extends RecyclerView {
+
+    private Handler handler = new Handler(Looper.getMainLooper());
+    private static final String TAG = "CoverFlowView";
+
+    public static boolean scrollInfinity = false;
+    private int adapterDataSize = 0;
+
+    /**
+     * 是否有角度旋转 两侧
+     */
+    private boolean isTilted = true;
+    /**
+     * Item tilted factor
+     */
+    private static final int TILTED_FACTOR = 15;
+    /**
+     * item之间的间距
+     */
+    private static int ITEM_DIVIDER=-30;
+    /**
+     * LayoutManager orientation
+     */
+    public static final int VERTICAL = 1;
+    public static final int HORIZONTAL = 2;
+    /**
+     * 两侧item 跟主item大小比例
+     */
+    private static float SCALE=2f;
+
+    private int last_position = 0;
+    private int current_position = 0;
+    private int left_border_position = 0;
+    private int right_border_position = 0;
+
+    private int orientation = 0;
+
+    private boolean flag = false;
+
+    private CoverFlowItemListener coverFlowListener;
+    private LinearLayoutManager layoutManager;
+
+    private final Camera mCamera = new Camera();
+    private final Matrix mMatrix = new Matrix();
+    /**
+     * Paint object to draw with
+     */
+    private final Paint mPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+
+    public CoverFlowView(Context context) {
+        super(context);
+        init(context, null);
+    }
+
+    public CoverFlowView(Context context, AttributeSet attrs) {
+        super(context, attrs);
+        init(context, attrs);
+    }
+
+    public CoverFlowView(Context context, AttributeSet attrs, int defStyle) {
+        super(context, attrs, defStyle);
+        init(context, attrs);
+    }
+
+    private void init(Context context, AttributeSet attrs) {
+        mPaint.setAntiAlias(true);
+        this.setChildrenDrawingOrderEnabled(true);
+        this.addOnScrollListener(new CoverFlowScrollListener());
+        TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.CoverFlowView, 0, 0);
+        try {
+            scrollInfinity = ta.getBoolean(R.styleable.CoverFlowView_scroll_infinity, false);
+            orientation = "vertical".equals(ta.getString(R.styleable.CoverFlowView_scroll_orientation)) ? VERTICAL : HORIZONTAL;
+        } finally {
+            ta.recycle();
+        }
+        setOrientation();
+    }
+
+    @Override
+    public boolean drawChild(Canvas canvas, View child, long drawingTime) {
+        Bitmap bitmap = getChildDrawingCache(child);
+        // (top,left) is the pixel position of the child inside the list
+        final float top = child.getTop();
+        final float left = child.getLeft();
+        // center point of child
+        final float childCenterY = child.getHeight() / 2f;
+        final float childCenterX = child.getWidth() / 2f;
+        //center of list
+        final float parentCenterY = (getHeight() / 2f);
+        final float parentCenterX = (getWidth() / 2f);
+        //center point of child relative to list
+        final float absChildCenterY = child.getTop() + childCenterY;
+        final float absChildCenterX = child.getLeft() + childCenterX;
+        //distance of child center to the list center
+        final float distanceY = parentCenterY - absChildCenterY;
+
+        final float distanceX = parentCenterX - absChildCenterX;
+
+        if (orientation == HORIZONTAL) {
+            prepareMatrix(mMatrix, (int)distanceX,(int)(getWidth() / 1.5f));
+        } else {
+            prepareMatrix(mMatrix, (int)distanceY, (int)(getHeight() / 2f));
+        }
+
+        mMatrix.preTranslate(-childCenterX, -childCenterY);
+        mMatrix.postTranslate(childCenterX, childCenterY);
+        mMatrix.postTranslate(left, top);
+
+        canvas.drawBitmap(bitmap, mMatrix, mPaint);
+        return false;
+    }
+
+    private void prepareMatrix(final Matrix outMatrix, int distance, int r) {
+
+        //clip the distance
+       final int d = Math.min(r, Math.abs(distance));
+
+        //use circle formula
+        final float translateZ = (float) Math.sqrt((r * r) - (d * d));
+        mCamera.save();
+        float offset = r - translateZ;
+        mCamera.translate(0, 0, offset);
+        if (isTilted) {
+            float deg = offset / TILTED_FACTOR;
+            if (distance > 0) {
+                mCamera.rotateY(deg);
+            } else {
+                mCamera.rotateY(- deg);
+            }
+        }
+        mCamera.getMatrix(outMatrix);
+        mCamera.restore();
+    }
+
+    private Bitmap getChildDrawingCache(final View child) {
+        Bitmap bitmap = child.getDrawingCache();
+        if (bitmap == null) {
+            child.setDrawingCacheEnabled(true);
+            child.buildDrawingCache();
+            bitmap = child.getDrawingCache();
+        }
+        return bitmap;
+    }
+
+    @Override
+    protected int getChildDrawingOrder(int childCount, int i) {
+        int centerChild = childCount / 2;
+        if (!flag && !scrollInfinity) {
+            ((CoverFlowAdapter) getAdapter()).setBorder_position(centerChild);
+            left_border_position = centerChild;
+            right_border_position = ((CoverFlowAdapter) getAdapter()).getItemCount() - centerChild - 1;
+            Log.i(TAG, "left_border_position:" + left_border_position);
+            Log.i(TAG, "right_border_position" + right_border_position);
+            flag = true;
+        }
+        current_position = layoutManager.findFirstVisibleItemPosition() + centerChild;
+        if (last_position != current_position) {
+            last_position = current_position;
+            coverFlowListener.onItemChanged(current_position);
+        }
+
+        int rez = i;
+        //find drawIndex by centerChild
+        if (i > centerChild) {
+            //below center
+            rez = (childCount - 1) - i + centerChild;
+        } else if (i == centerChild) {
+            //center row
+            //draw it last
+            rez = childCount - 1;
+        } else {
+            //above center - draw as always
+            // i < centerChild
+            rez = i;
+        }
+        return rez;
+
+    }
+
+    public interface CoverFlowItemListener {
+        void onItemChanged(int position);
+
+        void onItemSelected(int position);
+    }
+
+    public void setCoverFlowListener(CoverFlowItemListener coverFlowListener) {
+        this.coverFlowListener = coverFlowListener;
+    }
+
+    public class CoverFlowScrollListener extends RecyclerView.OnScrollListener {
+        @Override
+        public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
+            super.onScrollStateChanged(recyclerView, newState);
+            if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                Log.i(TAG, "onScrollStateChanged");
+
+                coverFlowListener.onItemSelected(current_position % adapterDataSize);
+                Log.i(TAG, "current_position:" + current_position);
+                if (!scrollInfinity && current_position > right_border_position) {
+                    scrollToCenter(right_border_position);
+                    return;
+                }
+                if (!scrollInfinity && current_position < left_border_position) {
+                    scrollToCenter(left_border_position);
+                    return;
+                }
+
+                int first_position = layoutManager.findFirstVisibleItemPosition();
+                View centerChild = CoverFlowView.this.getChildAt(current_position - first_position);
+                int[] location = new int[2];
+                centerChild.getLocationInWindow(location);
+                int centerItemX = location[0] + centerChild.getWidth() / 2;
+
+                Display display = getDisplay();
+                final Point size = new Point();
+                display.getSize(size);
+                int width = size.x;
+                int centerX = width / 2;
+                CoverFlowView.this.smoothScrollBy(centerItemX - centerX, 0);
+            }
+        }
+    }
+
+    public void scrollToCenter(int position) {
+        if (scrollInfinity || (position <= right_border_position && position >= left_border_position)) {
+            int first_position = layoutManager.findFirstVisibleItemPosition();
+            int current_position = position - first_position;
+            View targetChild = this.getChildAt(current_position);
+            if (targetChild == null) {
+                return;
+            }
+            int[] location = new int[2];
+            targetChild.getLocationInWindow(location);
+            final int targetItemX = location[0] + targetChild.getWidth() / 2;
+
+            Display display = getDisplay();
+            final Point size = new Point();
+            display.getSize(size);
+            int width = size.x;
+            final int centerX = width / 2;
+
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    CoverFlowView.this.smoothScrollBy(targetItemX - centerX, 0);
+                }
+            });
+        }
+    }
+
+    public void setOrientation() {// 每一个item间间距
+        DividerItemDecoration itemDecoration;
+        if (orientation == VERTICAL) {
+            layoutManager = new LinearLayoutManager(getContext(), LinearLayoutManager.VERTICAL, false);
+            itemDecoration = new DividerItemDecoration(0, ITEM_DIVIDER);
+        } else {
+            layoutManager = new LinearLayoutManager(getContext(), LinearLayoutManager.HORIZONTAL, false);
+            itemDecoration = new DividerItemDecoration(ITEM_DIVIDER, 0);
+        }
+        this.setLayoutManager(layoutManager);
+        this.addItemDecoration(itemDecoration);
+    }
+
+    private class DividerItemDecoration extends RecyclerView.ItemDecoration {
+
+        private int leftPadding, topPadding;
+
+        public DividerItemDecoration(int leftPadding, int topPadding) {
+            this.leftPadding = leftPadding;
+            this.topPadding = topPadding;
+        }
+
+        @Override
+        public void getItemOffsets(Rect outRect, View view, RecyclerView parent, RecyclerView.State state) {
+            if (view.getId() == 0) {
+                return;
+            }
+            outRect.left = leftPadding;
+            outRect.top = topPadding;
+        }
+    }
+
+    @Override
+    public LinearLayoutManager getLayoutManager() {
+        return layoutManager;
+    }
+
+    @Override
+    public void setAdapter(Adapter adapter) {
+        if (!scrollInfinity) {
+            ((CoverFlowAdapter) adapter).setFactor(1);
+        }
+        adapterDataSize = ((CoverFlowAdapter) adapter).getOriginDataSize();
+        if (adapterDataSize == 0) {
+            Log.e(TAG, "adapter size is null!");
+            return;
+        }
+        super.setAdapter(adapter);
+    }
+
+    /**
+     * Whether set item angle
+     * @param tilted
+     */
+    public void setTilted(boolean tilted) {
+        isTilted = tilted;
+    }
+    /**
+     * 设置item之间的间距
+     */
+    public void setItemDivider(int divider){
+        this.ITEM_DIVIDER=divider;
+    }
+    /**
+     * 设置主item和侧边item的比例
+     */
+    public void setScaleSize(float scale){
+        this.SCALE=scale;
+    }
+}
